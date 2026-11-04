@@ -1,0 +1,28 @@
+name: Personal job board refresh
+
+on:
+  schedule:
+    - cron: '17 */3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-job-board-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch personal job matches
+        run: python3 personal-job-board/fetch_jobs.py
+      - name: Upload private workflow artifact (not published to Pages)
+        uses: actions/upload-artifact@v4
+        with:
+          name: personal-job-matches
+          path: personal-job-board/jobs.json
+          retention-days: 7
