@@ -1,0 +1,24 @@
+name: Job Hunter 200 (read-only)
+on:
+  schedule:
+    - cron: '0 */3 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scan freehire public API
+        run: python3 scripts/job_hunter_200.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: job-hunter-200-${{ github.run_id }}
+          path: job-hunter-output/
+          retention-days: 30
