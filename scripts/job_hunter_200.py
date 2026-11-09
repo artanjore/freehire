@@ -9,7 +9,7 @@ API = os.getenv("JOB_HUNTER_API", "https://freehire.me/api/v1/jobs")
 TERMS = ["product manager", "ai product manager", "product owner", "business analyst", "program manager", "product analyst", "forward deployed"]
 SIGNALS = ["llm", "ai agent", "voice agent", "langsmith", "a/b testing", "experimentation", "fintech", "roadmap", "stakeholder", "agile", "sql", "product analytics", "generative ai", "prompt engineering"]
 BLOCK = ["no sponsorship", "not sponsor", "cannot sponsor", "unable to sponsor", "no visa sponsorship", "not eligible for sponsorship", "will not sponsor", "no h-1b", "no h1b"]
-FIELDS = ["found_at", "company", "title", "location", "source", "url", "match_score", "matched_keywords", "resume_customization_suggestion", "visa_status", "application_status"]
+FIELDS = ["found_at", "posted_at", "company", "title", "location", "source", "url", "match_score", "matched_keywords", "resume_customization_suggestion", "visa_status", "application_status"]
 
 def fetch(query):
     params = urllib.parse.urlencode({"q": query, "limit": 100})
@@ -44,6 +44,22 @@ def normalize(job):
     source = field(job, "source", "provider", "ats")
     return title, company, url, description, location, source
 
+def posting_date(job):
+    """Only accept dated postings; first-seen and updated dates are not proof."""
+    raw = field(job, "posted_at", "published_at", "date_posted", "publication_date", "postedAt", "publishedAt")
+    if not raw:
+        return None
+    try:
+        if raw.isdigit():
+            date = dt.datetime.fromtimestamp(int(raw) / (1000 if len(raw) >= 13 else 1), tz=dt.timezone.utc)
+        else:
+            date = dt.datetime.fromisoformat(raw.replace("Z", "+00:00"))
+            if date.tzinfo is None:
+                date = date.replace(tzinfo=dt.timezone.utc)
+        return date.astimezone(dt.timezone.utc)
+    except (ValueError, OverflowError):
+        return None
+
 def main():
     seen, rows, errors = set(), [], []
     for term in TERMS:
@@ -54,6 +70,10 @@ def main():
             continue
         for job in jobs:
             if not isinstance(job, dict):
+                continue
+            posted = posting_date(job)
+            now = dt.datetime.now(dt.timezone.utc)
+            if posted is None or posted > now or now - posted > dt.timedelta(hours=72):
                 continue
             title, company, url, desc, location, source = normalize(job)
             if not title or not company or not url:
@@ -74,7 +94,7 @@ def main():
             if score < 66:
                 continue
             rows.append({
-                "found_at": dt.datetime.now(dt.timezone.utc).isoformat(),
+                "found_at": now.isoformat(), "posted_at": posted.isoformat(),
                 "company": company, "title": title, "location": location, "source": source, "url": url,
                 "match_score": score, "matched_keywords": "; ".join(matched),
                 "resume_customization_suggestion": "Emphasize verified experience with: " + ", ".join(matched[:5]),
